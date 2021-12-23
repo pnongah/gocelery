@@ -5,3 +5,8 @@ from main import app
 def subtract(a, b):
     print('subtracting...')
     return a - b
+
+
+@app.task
+def throw_error():
+    raise Exception("python error")

@@ -6,6 +6,7 @@ package gocelery
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -27,6 +28,10 @@ type CeleryBroker interface {
 type CeleryBackend interface {
 	GetResult(string) (*ResultMessage, error) // must be non-blocking
 	SetResult(taskID string, result *ResultMessage) error
+}
+
+type TaskResultError struct {
+	Err interface{} `json:"err"`
 }
 
 // NewCeleryClient creates new celery client
@@ -132,9 +137,11 @@ func (ar *AsyncResult) Get(timeout time.Duration) (interface{}, error) {
 		case <-ticker.C:
 			val, err := ar.AsyncGet()
 			if err != nil {
-				continue
+				if _, ok := err.(*TaskResultError); !ok {
+					continue
+				}
 			}
-			return val, nil
+			return val, err
 		}
 	}
 }
@@ -152,7 +159,7 @@ func (ar *AsyncResult) AsyncGet() (interface{}, error) {
 		return nil, err
 	}
 	if val.Status != "SUCCESS" {
-		return nil, fmt.Errorf("error response status %v", val)
+		return nil, &TaskResultError{Err: val.Result}
 	}
 	ar.result = val
 	return val.Result, nil
@@ -168,5 +175,10 @@ func (ar *AsyncResult) Ready() (bool, error) {
 		return false, err
 	}
 	ar.result = val
-	return (val != nil), nil
+	return val != nil, nil
+}
+
+func (e *TaskResultError) Error() string {
+	bytes, _ := json.Marshal(e.Err)
+	return string(bytes)
 }

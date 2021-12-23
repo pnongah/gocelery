@@ -25,9 +25,7 @@ func GetRealValue(val *reflect.Value) interface{} {
 		return val.Uint()
 	case reflect.Float32, reflect.Float64:
 		return val.Float()
-	case reflect.Slice, reflect.Map:
-		return val.Interface()
 	default:
-		return nil
+		return val.Interface()
 	}
 }

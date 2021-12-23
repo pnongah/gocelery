@@ -63,7 +63,8 @@ func (w *CeleryWorker) StartWorkerWithContext(ctx context.Context) {
 					resultMsg, err := w.RunTask(taskMessage)
 					if err != nil {
 						log.Printf("failed to run task message %s: %+v", taskMessage.ID, err)
-						continue
+						resultMsg = getResultMessage(&TaskResultError{Err: err.Error()})
+						resultMsg.Status = "FAILURE"
 					}
 					defer releaseResultMessage(resultMsg)
 
@@ -172,7 +173,8 @@ func runTaskFunc(taskFunc *reflect.Value, message *TaskMessage) (*ResultMessage,
 	numArgs := taskFunc.Type().NumIn()
 	messageNumArgs := len(message.Args)
 	if numArgs != messageNumArgs {
-		return nil, fmt.Errorf("Number of task arguments %d does not match number of message arguments %d", numArgs, messageNumArgs)
+		return nil, fmt.Errorf("Number of task arguments %d does not match number of message arguments %d",
+			numArgs, messageNumArgs)
 	}
 
 	// construct arguments
@@ -197,6 +199,14 @@ func runTaskFunc(taskFunc *reflect.Value, message *TaskMessage) (*ResultMessage,
 	if len(res) == 0 {
 		return nil, nil
 	}
-
+	errorReturn := res[len(res)-1].Type().Implements(reflect.TypeOf((*error)(nil)).Elem())
+	if len(res) > 2 || !errorReturn {
+		return nil, fmt.Errorf("only [Any] or [Any, error] return signatures are supported")
+	}
+	if errorReturn {
+		if err := res[len(res)-1].Interface(); err != nil {
+			return nil, err.(error)
+		}
+	}
 	return getReflectionResultMessage(&res[0]), nil
 }
