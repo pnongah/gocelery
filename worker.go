@@ -200,7 +200,7 @@ func runTaskFunc(taskFunc *reflect.Value, message *TaskMessage) (*ResultMessage,
 		return nil, nil
 	}
 	errorReturn := res[len(res)-1].Type().Implements(reflect.TypeOf((*error)(nil)).Elem())
-	if len(res) > 2 || !errorReturn {
+	if len(res) > 2 {
 		return nil, fmt.Errorf("only [Any] or [Any, error] return signatures are supported")
 	}
 	if errorReturn {
