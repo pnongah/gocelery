@@ -1,12 +1,12 @@
 package worker
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"os/exec"
 	"testing"
 	"tests/config"
+
+	"github.com/keon94/go-compose/docker"
 
 	"github.com/pnongah/gocelery"
 
@@ -31,6 +31,8 @@ func RunGoWorker(t *testing.T, brokerUrl string, backendUrl string) error {
 func RegisterGoFunctions(cli *gocelery.CeleryClient) {
 	cli.Register(GoFunc_Add, Add)
 	cli.Register(GoFuncKwargs_Add, &adder{})
+	cli.Register(GoFunc_Error, ThrowError)
+	cli.Register(GoFuncKwargs_Error, &errorThrower{})
 }
 
 func RunPythonWorker(t *testing.T, args ...string) error {
@@ -42,30 +44,10 @@ func RunPythonWorker(t *testing.T, args ...string) error {
 			_ = cmd.Process.Kill()
 		}
 	})
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
+	if err := docker.RunProcessWithLogs(cmd, func(msg string) {
+		fmt.Printf("[[python-worker]] %s\n", msg)
+	}); err != nil {
+		return fmt.Errorf("could not start python worker: %w", err)
 	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return err
-	}
-	if err = cmd.Start(); err != nil {
-		return fmt.Errorf("could not start python worker: %v", err)
-	}
-	collectPythonLogs(stdout, stderr)
 	return nil
-}
-
-func collectPythonLogs(stdout io.ReadCloser, stderr io.ReadCloser) {
-	logger := func(pipe io.ReadCloser) {
-		scanner := bufio.NewScanner(pipe)
-		scanner.Split(bufio.ScanLines)
-		for scanner.Scan() {
-			m := scanner.Text()
-			fmt.Println("[[python-worker]] " + m)
-		}
-	}
-	go logger(stdout)
-	go logger(stderr)
 }
