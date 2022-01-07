@@ -16,6 +16,11 @@ import (
 // PythonBin the name of the python binary on the system
 const PythonBin = "python3"
 
+// Queues
+
+const GoQueue = "go_queue"
+const PyQueue = "py_queue"
+
 func RunGoWorker(t *testing.T, brokerUrl string, backendUrl string) error {
 	cli, err := config.GetCeleryClient(brokerUrl, backendUrl)
 	if err != nil {
@@ -29,10 +34,10 @@ func RunGoWorker(t *testing.T, brokerUrl string, backendUrl string) error {
 }
 
 func RegisterGoFunctions(cli *gocelery.CeleryClient) {
-	cli.Register(GoFunc_Add, Add)
-	cli.Register(GoFuncKwargs_Add, &adder{})
-	cli.Register(GoFunc_Error, ThrowError)
-	cli.Register(GoFuncKwargs_Error, &errorThrower{})
+	cli.Register(GoFunc_Add, &gocelery.CeleryTaskConfig{Task: Add, Queue: GoQueue})
+	cli.Register(GoFuncKwargs_Add, &gocelery.CeleryTaskConfig{Task: &adder{}, Queue: GoQueue})
+	cli.Register(GoFunc_Error, &gocelery.CeleryTaskConfig{Task: ThrowError, Queue: GoQueue})
+	cli.Register(GoFuncKwargs_Error, &gocelery.CeleryTaskConfig{Task: &errorThrower{}, Queue: GoQueue})
 }
 
 func RunPythonWorker(t *testing.T, args ...string) error {

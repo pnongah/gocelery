@@ -7,13 +7,14 @@ package gocelery
 import (
 	"encoding/json"
 	"fmt"
+	uuid "github.com/satori/go.uuid"
 	"sync"
 	"time"
 
 	"github.com/streadway/amqp"
 )
 
-const exchangeName = "celery-exchange"
+const exchangeName = "celery"
 
 // AMQPExchange stores AMQP Exchange configuration
 type AMQPExchange struct {
@@ -27,9 +28,9 @@ type AMQPExchange struct {
 func NewAMQPExchange(name string) *AMQPExchange {
 	return &AMQPExchange{
 		Name:       name,
-		Type:       "topic",
+		Type:       "direct",
 		Durable:    true,
-		AutoDelete: true,
+		AutoDelete: false,
 	}
 }
 
@@ -53,18 +54,18 @@ func NewAMQPQueue(name string) *AMQPQueue {
 type AMQPCeleryBroker struct {
 	connection *amqp.Connection
 
-	exchange      *AMQPExchange
-	queue         *AMQPQueue
+	exchange *AMQPExchange
+	//queue         *AMQPQueue
 	prefetchCount int
-	listener      <-chan amqp.Delivery
+	listener      chan interface{}
 	connect       func() error
 }
 
 // NewAMQPCeleryBroker creates new AMQPCeleryBroker using AMQP conn and channel
-func NewAMQPCeleryBroker(host string, config *amqp.Config, queueName string) (*AMQPCeleryBroker, error) {
+func NewAMQPCeleryBroker(host string, config *amqp.Config) (*AMQPCeleryBroker, error) {
 	broker := &AMQPCeleryBroker{
 		exchange:      NewAMQPExchange(exchangeName),
-		queue:         NewAMQPQueue(queueName),
+		listener:      make(chan interface{}),
 		prefetchCount: 4,
 	}
 	connMutex := new(sync.Mutex)
@@ -77,12 +78,34 @@ func NewAMQPCeleryBroker(host string, config *amqp.Config, queueName string) (*A
 }
 
 // Listen spawns receiving channel on AMQP queue
-func (b *AMQPCeleryBroker) Listen() error {
+func (b *AMQPCeleryBroker) Listen(queues []string) error {
 	channel, err := b.openChannel()
 	if err != nil {
 		return err
 	}
-	b.listener, err = channel.Consume(b.queue.Name, "", false, false, false, true, nil)
+	for _, queue := range queues {
+		if err = createQueue(NewAMQPQueue(queue), channel); err != nil {
+			return err
+		}
+	}
+	for _, queue := range queues {
+		listener, err := channel.Consume(queue, generateConsumerTag(queue), false, false, false, true, nil)
+		if err != nil {
+			return err
+		}
+		go func() {
+			for delivery := range listener {
+				deliveryAck(delivery)
+				var taskMessage *TaskMessage
+				err := json.Unmarshal(delivery.Body, &taskMessage)
+				if err != nil {
+					b.listener <- err
+				}
+				b.listener <- taskMessage
+			}
+		}()
+		fmt.Printf("started listener for queue %s\n", queue)
+	}
 	if err != nil {
 		return err
 	}
@@ -90,7 +113,8 @@ func (b *AMQPCeleryBroker) Listen() error {
 }
 
 // SendCeleryMessage sends CeleryMessage to broker
-func (b *AMQPCeleryBroker) SendCeleryMessage(message *CeleryMessage, _ ...string) error {
+func (b *AMQPCeleryBroker) SendCeleryMessage(message *CeleryMessage) error {
+	taskMessage := message.GetTaskMessage()
 	channel, err := b.openChannel()
 	if err != nil {
 		return err
@@ -101,7 +125,9 @@ func (b *AMQPCeleryBroker) SendCeleryMessage(message *CeleryMessage, _ ...string
 			fmt.Println("error closing channel")
 		}
 	}()
-	taskMessage := message.GetTaskMessage()
+	if err = createQueue(NewAMQPQueue(taskMessage.Queue), channel); err != nil {
+		return err
+	}
 	resBytes, err := json.Marshal(taskMessage)
 	if err != nil {
 		return err
@@ -114,7 +140,7 @@ func (b *AMQPCeleryBroker) SendCeleryMessage(message *CeleryMessage, _ ...string
 	}
 	return channel.Publish(
 		exchangeName,
-		b.queue.Name,
+		taskMessage.Queue,
 		false,
 		false,
 		publishMessage,
@@ -125,12 +151,10 @@ func (b *AMQPCeleryBroker) SendCeleryMessage(message *CeleryMessage, _ ...string
 func (b *AMQPCeleryBroker) GetTaskMessage() (*TaskMessage, error) {
 	select {
 	case delivery := <-b.listener:
-		deliveryAck(delivery)
-		var taskMessage TaskMessage
-		if err := json.Unmarshal(delivery.Body, &taskMessage); err != nil {
+		if err, ok := delivery.(error); ok {
 			return nil, err
 		}
-		return &taskMessage, nil
+		return delivery.(*TaskMessage), nil
 	default:
 		return nil, fmt.Errorf("consuming channel is empty")
 	}
@@ -164,7 +188,7 @@ func createQueue(queue *AMQPQueue, channel *amqp.Channel) error {
 	}
 	err = channel.QueueBind(
 		queue.Name,
-		"#",
+		queue.Name,
 		exchangeName,
 		false,
 		nil,
@@ -183,9 +207,6 @@ func (b *AMQPCeleryBroker) openChannel() (*amqp.Channel, error) {
 	if err = createExchange(b.exchange, channel); err != nil {
 		return nil, err
 	}
-	if err = createQueue(b.queue, channel); err != nil {
-		return nil, err
-	}
 	if err = channel.Qos(b.prefetchCount, 0, false); err != nil {
 		return nil, err
 	}
@@ -200,12 +221,21 @@ func (b *AMQPCeleryBroker) lazyConnect(host string, config *amqp.Config) error {
 			return err
 		}
 		b.connection = connection
-		if b.listener != nil {
-			// implies that we were previously subscribed but lost connection, so restore it
-			if err = b.Listen(); err != nil {
-				return err
-			}
-		}
+		//if len(b.listeners) > 0 {
+		//	// implies that we were previously subscribed but lost connection, so restore it
+		//	queues := make([]string, len(b.listeners))
+		//	for k := range b.listeners {
+		//		queues = append(queues, k)
+		//	}
+		//	if err = b.Listen(queues); err != nil {
+		//		return err
+		//	}
+		//}
 	}
 	return nil
+}
+
+func generateConsumerTag(queue string) string {
+	u, _ := uuid.NewV4()
+	return "go-consumer::" + queue + "::" + u.String()
 }

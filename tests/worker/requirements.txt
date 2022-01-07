@@ -1,3 +1,4 @@
-celery
+celery~=5.2.1
 redis
 amqp
+kombu~=5.2.2

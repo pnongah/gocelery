@@ -1,6 +1,10 @@
 import sys
 
 from celery import Celery
+from kombu import Queue
+
+# queues
+py_queue = 'py_queue'
 
 app = Celery(
     imports=['tasks'],
@@ -16,6 +20,10 @@ app = Celery(
 
 def main():
     print('starting python worker')
+    app.conf.task_queues = [
+        Queue(name=app.conf.task_default_queue),
+        Queue(name=py_queue)
+    ]
     app.start(argv=['worker', '-P', 'threads', '-l', 'INFO'])
 
 

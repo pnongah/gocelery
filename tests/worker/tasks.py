@@ -1,7 +1,8 @@
 from main import app
+from main import py_queue
 
 
-@app.task
+@app.task(queue=py_queue)
 def subtract(a, b):
     print('subtracting...')
     return a - b

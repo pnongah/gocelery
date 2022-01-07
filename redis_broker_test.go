@@ -13,7 +13,7 @@ import (
 )
 
 func makeCeleryMessage() (*CeleryMessage, error) {
-	taskMessage := getTaskMessage("add")
+	taskMessage := getTaskMessage("add", &TaskParameters{})
 	taskMessage.Args = []interface{}{rand.Intn(10), rand.Intn(10)}
 	defer releaseTaskMessage(taskMessage)
 	encodedTaskMessage, err := taskMessage.Encode()

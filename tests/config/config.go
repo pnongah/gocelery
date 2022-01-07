@@ -103,7 +103,7 @@ func getCeleryBroker(url string) (gocelery.CeleryBroker, error) {
 	} else if strings.HasPrefix(url, "amqp://") {
 		return gocelery.NewAMQPCeleryBroker(url, &amqp.Config{
 			Heartbeat: 60 * time.Second,
-		}, "celery")
+		})
 	} else {
 		return nil, fmt.Errorf("bad url scheme")
 	}

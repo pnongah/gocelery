@@ -10,7 +10,7 @@ services:
     volumes:
       - redis-volume-test:/data
     ports:
-      - "${REDIS_PORT:-0}:6379"
+      - "${REDIS_PORT:-6379}:6379"
   rabbitmq:
     image: rabbitmq:management
     labels:
@@ -29,8 +29,8 @@ services:
       timeout: 30s
       retries: 3
     ports:
-      - "${RABBITMQ_PORT:-0}:5672"
-      - "${RABBITMQ_MGMT_PORT:-0}:15672"
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
 
 networks:
   tests:

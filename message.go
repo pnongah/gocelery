@@ -111,13 +111,18 @@ func (cm *CeleryMessage) GetTaskMessage() *TaskMessage {
 
 // TaskMessage is celery-compatible message
 type TaskMessage struct {
-	ID      string                 `json:"id"`
-	Task    string                 `json:"task"`
-	Args    []interface{}          `json:"args"`
-	Kwargs  map[string]interface{} `json:"kwargs"`
-	Retries int                    `json:"retries"`
-	ETA     *string                `json:"eta"`
-	Expires *time.Time             `json:"expires"`
+	*TaskParameters
+	ID      string     `json:"id"`
+	Task    string     `json:"task"`
+	Retries int        `json:"retries"`
+	ETA     *string    `json:"eta"`
+	Expires *time.Time `json:"expires"`
+}
+
+type TaskParameters struct {
+	Args   []interface{}          `json:"args"`
+	Kwargs map[string]interface{} `json:"kwargs"`
+	Queue  string                 `json:"queue"`
 }
 
 func (tm *TaskMessage) reset() {
@@ -131,20 +136,28 @@ var taskMessagePool = sync.Pool{
 	New: func() interface{} {
 		eta := time.Now().Format(time.RFC3339)
 		return &TaskMessage{
-			ID:      uuid.Must(uuid.NewV4()).String(),
-			Retries: 0,
-			Kwargs:  nil,
-			ETA:     &eta,
+			ID:             uuid.Must(uuid.NewV4()).String(),
+			Retries:        0,
+			TaskParameters: nil,
+			ETA:            &eta,
 		}
 	},
 }
 
-func getTaskMessage(task string) *TaskMessage {
+func getTaskMessage(task string, params *TaskParameters) *TaskMessage {
 	msg := taskMessagePool.Get().(*TaskMessage)
+	msg.TaskParameters = params
 	msg.Task = task
-	msg.Args = make([]interface{}, 0)
-	msg.Kwargs = make(map[string]interface{})
 	msg.ETA = nil
+	if msg.Args == nil {
+		msg.Args = make([]interface{}, 0)
+	}
+	if msg.Kwargs == nil {
+		msg.Kwargs = make(map[string]interface{})
+	}
+	if msg.Queue == "" {
+		msg.Queue = "celery"
+	}
 	return msg
 }
 
