@@ -1,8 +1,11 @@
 package tests
 
 import (
+	"fmt"
+	"github.com/sirupsen/logrus"
 	"testing"
 	"tests/config"
+	"tests/util"
 	"tests/worker"
 	"time"
 
@@ -11,6 +14,10 @@ import (
 	"github.com/keon94/go-compose/docker"
 	"github.com/stretchr/testify/require"
 )
+
+func init() {
+	logrus.SetLevel(logrus.DebugLevel)
+}
 
 func TestAtlasWatcher_FullRedis(t *testing.T) {
 	env := docker.StartEnvironment(config.Env,
@@ -21,19 +28,21 @@ func TestAtlasWatcher_FullRedis(t *testing.T) {
 	)
 	t.Cleanup(env.Shutdown)
 	redisConn := env.Services["redis"].(string)
-
-	cli := startWorkers(t, &config.WorkerConfig{
+	cfg := &config.WorkerConfig{
 		UsePyWorker: true,
 		UseGoWorker: true,
 		BrokerURL:   redisConn + "/0",
-		BackendURL:  redisConn + "/0",
+		BackendURL:  redisConn + "/1",
+	}
+	cli := startWorkers(t, cfg)
+	t.Run("go-client happy path", func(t *testing.T) {
+		runGoClientHappyPath(t, cli)
 	})
-
-	t.Run("happy path", func(t *testing.T) {
-		runHappyPath(t, cli)
+	t.Run("go-client worker error", func(t *testing.T) {
+		runGoClientWorkerError(t, cli)
 	})
-	t.Run("worker error", func(t *testing.T) {
-		runWorkerError(t, cli)
+	t.Run("py-client tests", func(t *testing.T) {
+		runPythonTests(t, cfg)
 	})
 }
 
@@ -52,21 +61,34 @@ func TestAtlasWorker_RabbitBrokerRedisBackend(t *testing.T) {
 	redisConn := env.Services["redis"].(string)
 	rabbitConn := env.Services["rabbitmq"].(string)
 
-	cli := startWorkers(t, &config.WorkerConfig{
+	cfg := &config.WorkerConfig{
 		UseGoWorker: true,
 		UsePyWorker: true,
 		BrokerURL:   rabbitConn + "//worker",
 		BackendURL:  redisConn + "/0",
+	}
+	cli := startWorkers(t, cfg)
+	t.Run("go-client happy path", func(t *testing.T) {
+		runGoClientHappyPath(t, cli)
 	})
-	t.Run("happy path", func(t *testing.T) {
-		runHappyPath(t, cli)
+	t.Run("go-client worker error", func(t *testing.T) {
+		runGoClientWorkerError(t, cli)
 	})
-	t.Run("worker error", func(t *testing.T) {
-		runWorkerError(t, cli)
+	t.Run("py-client tests", func(t *testing.T) {
+		runPythonTests(t, cfg)
 	})
 }
 
-func runHappyPath(t *testing.T, cli *gocelery.CeleryClient) {
+func runPythonTests(t *testing.T, cfg *config.WorkerConfig, testCases ...string) {
+	args := []string{cfg.BrokerURL, cfg.BackendURL}
+	args = append(args, testCases...)
+	err := util.RunPython(t, false, func(msg string) {
+		fmt.Printf("[[python-test]] %s\n", msg)
+	}, "gocelery_test.py", args...)
+	require.NoError(t, err)
+}
+
+func runGoClientHappyPath(t *testing.T, cli *gocelery.CeleryClient) {
 	{
 		delay, err := cli.Delay(worker.GoFunc_Add, &gocelery.TaskParameters{
 			Args:  []interface{}{1, 2},
@@ -85,19 +107,19 @@ func runHappyPath(t *testing.T, cli *gocelery.CeleryClient) {
 		require.NoError(t, err)
 		require.Equal(t, 3.0, result)
 	}
-	{
-		delay, err := cli.Delay(worker.PyFunc_Sub, &gocelery.TaskParameters{
-			Args:  []interface{}{2, 1},
-			Queue: worker.PyQueue,
-		})
-		require.NoError(t, err)
-		result, err := cli.GetAsyncResult(delay.TaskID).Get(5 * time.Second)
-		require.NoError(t, err)
-		require.Equal(t, 1.0, result)
-	}
+	//{
+	//	delay, err := cli.Delay(worker.PyFunc_Sub, &gocelery.TaskParameters{
+	//		Args:  []interface{}{2, 1},
+	//		Queue: worker.PyQueue,
+	//	})
+	//	require.NoError(t, err)
+	//	result, err := cli.GetAsyncResult(delay.TaskID).Get(5 * time.Second)
+	//	require.NoError(t, err)
+	//	require.Equal(t, 1.0, result)
+	//}
 }
 
-func runWorkerError(t *testing.T, cli *gocelery.CeleryClient) {
+func runGoClientWorkerError(t *testing.T, cli *gocelery.CeleryClient) {
 	expectedError := &gocelery.TaskResultError{}
 	{
 		delay, err := cli.Delay(worker.GoFunc_Error, &gocelery.TaskParameters{
@@ -121,9 +143,9 @@ func runWorkerError(t *testing.T, cli *gocelery.CeleryClient) {
 	}
 }
 
-func startWorkers(t *testing.T, cfg *config.WorkerConfig) (gocli *gocelery.CeleryClient) {
+func startWorkers(t *testing.T, cfg *config.WorkerConfig) (cli *gocelery.CeleryClient) {
 	var err error
-	gocli, err = config.GetCeleryClient(cfg.BrokerURL, cfg.BackendURL)
+	cli, err = config.GetCeleryClient(cfg.BrokerURL, cfg.BackendURL)
 	require.NoError(t, err)
 	if cfg.UseGoWorker {
 		require.NoError(t, worker.RunGoWorker(t, cfg.BrokerURL, cfg.BackendURL))
@@ -131,5 +153,5 @@ func startWorkers(t *testing.T, cfg *config.WorkerConfig) (gocli *gocelery.Celer
 	if cfg.UsePyWorker {
 		require.NoError(t, worker.RunPythonWorker(t, cfg.BrokerURL, cfg.BackendURL))
 	}
-	return gocli
+	return cli
 }

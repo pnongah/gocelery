@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 	"sync"
 	"time"
 
@@ -104,7 +105,7 @@ func (b *AMQPCeleryBroker) Listen(queues []string) error {
 				b.listener <- taskMessage
 			}
 		}()
-		fmt.Printf("started listener for queue %s\n", queue)
+		logrus.Debugf("started listener for queue %s", queue)
 	}
 	if err != nil {
 		return err
@@ -122,7 +123,7 @@ func (b *AMQPCeleryBroker) SendCeleryMessage(message *CeleryMessage) error {
 	defer func() {
 		err = channel.Close()
 		if err != nil {
-			fmt.Println("error closing channel")
+			logrus.Warnf("error closing channel")
 		}
 	}()
 	if err = createQueue(NewAMQPQueue(taskMessage.Queue), channel); err != nil {

@@ -7,6 +7,7 @@ package gocelery
 import (
 	"context"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"log"
 	"reflect"
 	"sync"
@@ -65,6 +66,7 @@ func (w *CeleryWorker) StartWorkerWithContext(ctx context.Context) {
 					}
 
 					// run task
+					logrus.Debugf("Running task with ID %s", taskMessage.ID)
 					resultMsg, err := w.RunTask(taskMessage)
 					if err != nil {
 						log.Printf("failed to run task message %s: %+v", taskMessage.ID, err)
@@ -72,7 +74,7 @@ func (w *CeleryWorker) StartWorkerWithContext(ctx context.Context) {
 						resultMsg.Status = "FAILURE"
 					}
 					defer releaseResultMessage(resultMsg)
-
+					logrus.Debugf("Storing result for task ID %s into backend", taskMessage.ID)
 					// push result to backend
 					err = w.backend.SetResult(taskMessage.ID, resultMsg)
 					if err != nil {

@@ -2,13 +2,10 @@ package worker
 
 import (
 	"fmt"
-	"os/exec"
+	"github.com/pnongah/gocelery"
 	"testing"
 	"tests/config"
-
-	"github.com/keon94/go-compose/docker"
-
-	"github.com/pnongah/gocelery"
+	"tests/util"
 
 	"github.com/sirupsen/logrus"
 )
@@ -41,18 +38,7 @@ func RegisterGoFunctions(cli *gocelery.CeleryClient) {
 }
 
 func RunPythonWorker(t *testing.T, args ...string) error {
-	pyargs := []string{"worker/main.py"}
-	pyargs = append(pyargs, args...)
-	cmd := exec.Command(PythonBin, pyargs...)
-	t.Cleanup(func() {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-	})
-	if err := docker.RunProcessWithLogs(cmd, func(msg string) {
+	return util.RunPython(t, true, func(msg string) {
 		fmt.Printf("[[python-worker]] %s\n", msg)
-	}); err != nil {
-		return fmt.Errorf("could not start python worker: %w", err)
-	}
-	return nil
+	}, "worker/main.py", args...)
 }
