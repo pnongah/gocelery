@@ -99,7 +99,7 @@ func getCeleryBroker(url string) (gocelery.CeleryBroker, error) {
 				return c, err
 			},
 		}
-		return &gocelery.RedisCeleryBroker{Pool: redisPool, QueueName: "celery"}, nil
+		return &gocelery.RedisCeleryBroker{Pool: redisPool}, nil
 	} else if strings.HasPrefix(url, "amqp://") {
 		return gocelery.NewAMQPCeleryBroker(url, &amqp.Config{
 			Heartbeat: 60 * time.Second,

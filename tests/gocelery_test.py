@@ -6,6 +6,8 @@ from unittest import TestSuite
 from celery import Celery
 from celery.result import AsyncResult
 
+from util.debugger import start_debugger
+
 celery_client = None
 
 
@@ -34,7 +36,7 @@ class CeleryTest(unittest.TestCase):
 
 def main():
     print('starting python tests with args {}'.format(sys.argv))
-    start_debugger()
+    start_debugger(9999)
     broker_url = sys.argv[1]
     backend_url = sys.argv[2]
     test_cases = sys.argv[3:]
@@ -64,19 +66,6 @@ def run_tests(test_cases: [str]):
         exit(0)
     else:
         exit(1)
-
-
-def start_debugger():
-    try:
-        import pydevd_pycharm as pydevd
-        pydevd.settrace(
-            host='localhost',
-            port=9999,
-            stdoutToServer=True,
-            stderrToServer=True)
-    except Exception as e:
-        print("[Warning]: Could not enable debugger: " + str(e), file=sys.stderr)
-        pass
 
 
 if __name__ == '__main__':

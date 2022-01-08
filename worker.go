@@ -44,7 +44,7 @@ func NewCeleryWorker(broker CeleryBroker, backend CeleryBackend, numWorkers int)
 
 // StartWorkerWithContext starts celery worker(s) with given parent context
 func (w *CeleryWorker) StartWorkerWithContext(ctx context.Context) {
-	if err := w.setupBroker(w.getRegisteredQueues()); err != nil {
+	if err := w.broker.Listen(w.getRegisteredQueues()...); err != nil {
 		panic(err)
 	}
 	var wctx context.Context
@@ -64,7 +64,6 @@ func (w *CeleryWorker) StartWorkerWithContext(ctx context.Context) {
 					if err != nil || taskMessage == nil {
 						continue
 					}
-
 					// run task
 					logrus.Debugf("Running task with ID %s", taskMessage.ID)
 					resultMsg, err := w.RunTask(taskMessage)
@@ -166,15 +165,6 @@ func (w *CeleryWorker) RunTask(message *TaskMessage) (*ResultMessage, error) {
 	// use reflection to execute function ptr
 	taskFunc := reflect.ValueOf(config.Task)
 	return runTaskFunc(&taskFunc, message)
-}
-
-func (w *CeleryWorker) setupBroker(queues []string) error {
-	if amqp, ok := w.broker.(*AMQPCeleryBroker); ok {
-		if err := amqp.Listen(queues); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func runTaskFunc(taskFunc *reflect.Value, message *TaskMessage) (*ResultMessage, error) {

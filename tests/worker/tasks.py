@@ -1,5 +1,5 @@
-from main import app
-from main import py_queue
+from init import app
+from init import py_queue
 
 
 @app.task(queue=py_queue)

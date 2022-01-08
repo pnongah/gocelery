@@ -57,9 +57,10 @@ type AMQPCeleryBroker struct {
 
 	exchange *AMQPExchange
 	//queue         *AMQPQueue
-	prefetchCount int
-	listener      chan interface{}
-	connect       func() error
+	prefetchCount  int
+	listener       chan interface{}
+	listenerQueues []string
+	connect        func() error
 }
 
 // NewAMQPCeleryBroker creates new AMQPCeleryBroker using AMQP conn and channel
@@ -79,17 +80,19 @@ func NewAMQPCeleryBroker(host string, config *amqp.Config) (*AMQPCeleryBroker, e
 }
 
 // Listen spawns receiving channel on AMQP queue
-func (b *AMQPCeleryBroker) Listen(queues []string) error {
+func (b *AMQPCeleryBroker) Listen(queues ...string) error {
+	b.listenerQueues = append(b.listenerQueues, queues...)
+	if len(b.listenerQueues) == 0 {
+		return nil
+	}
 	channel, err := b.openChannel()
 	if err != nil {
 		return err
 	}
-	for _, queue := range queues {
+	for _, queue := range b.listenerQueues {
 		if err = createQueue(NewAMQPQueue(queue), channel); err != nil {
 			return err
 		}
-	}
-	for _, queue := range queues {
 		listener, err := channel.Consume(queue, generateConsumerTag(queue), false, false, false, true, nil)
 		if err != nil {
 			return err
@@ -104,6 +107,7 @@ func (b *AMQPCeleryBroker) Listen(queues []string) error {
 				}
 				b.listener <- taskMessage
 			}
+			logrus.Infof("listener for queue %s lost connection", queue)
 		}()
 		logrus.Debugf("started listener for queue %s", queue)
 	}
@@ -217,21 +221,13 @@ func (b *AMQPCeleryBroker) openChannel() (*amqp.Channel, error) {
 // lazyConnect connects to rabbitmq and handles recovery
 func (b *AMQPCeleryBroker) lazyConnect(host string, config *amqp.Config) error {
 	if b.connection == nil || b.connection.IsClosed() {
+		logrus.Infof("Establishing rabbitmq connection to %s", host)
 		connection, err := amqp.DialConfig(host, *config)
 		if err != nil {
 			return err
 		}
 		b.connection = connection
-		//if len(b.listeners) > 0 {
-		//	// implies that we were previously subscribed but lost connection, so restore it
-		//	queues := make([]string, len(b.listeners))
-		//	for k := range b.listeners {
-		//		queues = append(queues, k)
-		//	}
-		//	if err = b.Listen(queues); err != nil {
-		//		return err
-		//	}
-		//}
+		return b.Listen()
 	}
 	return nil
 }

@@ -10,10 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// PythonBin the name of the python binary on the system
-const PythonBin = "python3"
-
-// Queues
+//Queues
 
 const GoQueue = "go_queue"
 const PyQueue = "py_queue"
@@ -40,5 +37,5 @@ func RegisterGoFunctions(cli *gocelery.CeleryClient) {
 func RunPythonWorker(t *testing.T, args ...string) error {
 	return util.RunPython(t, true, func(msg string) {
 		fmt.Printf("[[python-worker]] %s\n", msg)
-	}, "worker/main.py", args...)
+	}, "worker/init.py", args...)
 }

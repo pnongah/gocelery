@@ -32,7 +32,7 @@ func TestAtlasWatcher_FullRedis(t *testing.T) {
 		UsePyWorker: true,
 		UseGoWorker: true,
 		BrokerURL:   redisConn + "/0",
-		BackendURL:  redisConn + "/1",
+		BackendURL:  redisConn + "/0",
 	}
 	cli := startWorkers(t, cfg)
 	t.Run("go-client happy path", func(t *testing.T) {
@@ -107,16 +107,16 @@ func runGoClientHappyPath(t *testing.T, cli *gocelery.CeleryClient) {
 		require.NoError(t, err)
 		require.Equal(t, 3.0, result)
 	}
-	//{
-	//	delay, err := cli.Delay(worker.PyFunc_Sub, &gocelery.TaskParameters{
-	//		Args:  []interface{}{2, 1},
-	//		Queue: worker.PyQueue,
-	//	})
-	//	require.NoError(t, err)
-	//	result, err := cli.GetAsyncResult(delay.TaskID).Get(5 * time.Second)
-	//	require.NoError(t, err)
-	//	require.Equal(t, 1.0, result)
-	//}
+	{
+		delay, err := cli.Delay(worker.PyFunc_Sub, &gocelery.TaskParameters{
+			Args:  []interface{}{2, 1},
+			Queue: worker.PyQueue,
+		})
+		require.NoError(t, err)
+		result, err := cli.GetAsyncResult(delay.TaskID).Get(5 * time.Second)
+		require.NoError(t, err)
+		require.Equal(t, 1.0, result)
+	}
 }
 
 func runGoClientWorkerError(t *testing.T, cli *gocelery.CeleryClient) {
