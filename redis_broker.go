@@ -15,23 +15,22 @@ import (
 // RedisCeleryBroker is celery broker for redis
 type RedisCeleryBroker struct {
 	*redis.Pool
-	listenerQueues []string
+	defaultSendQueue string
+	listenerQueues   []string
+}
+
+type RedisBrokerConfig struct {
+	DefaultSendQueue string
 }
 
 // NewRedisBroker creates new RedisCeleryBroker with given redis connection pool
-func NewRedisBroker(conn *redis.Pool) *RedisCeleryBroker {
-	return &RedisCeleryBroker{
-		Pool: conn,
+func NewRedisBroker(conn *redis.Pool, config *RedisBrokerConfig) *RedisCeleryBroker {
+	if config.DefaultSendQueue == "" {
+		config.DefaultSendQueue = DefaultBrokerQueue
 	}
-}
-
-// NewRedisCeleryBroker creates new RedisCeleryBroker based on given uri
-//
-// Deprecated: NewRedisCeleryBroker exists for historical compatibility
-// and should not be used. Use NewRedisBroker instead to create new RedisCeleryBroker.
-func NewRedisCeleryBroker(uri string) *RedisCeleryBroker {
 	return &RedisCeleryBroker{
-		Pool: NewRedisPool(uri),
+		defaultSendQueue: DefaultBrokerQueue,
+		Pool:             conn,
 	}
 }
 
@@ -49,7 +48,11 @@ func (cb *RedisCeleryBroker) SendCeleryMessage(message *CeleryMessage) error {
 	conn := cb.Get()
 	defer conn.Close()
 	taskMessage := message.GetTaskMessage()
-	_, err = conn.Do("LPUSH", taskMessage.Queue, jsonBytes)
+	queue := cb.defaultSendQueue
+	if taskMessage.Queue != "" {
+		queue = taskMessage.Queue
+	}
+	_, err = conn.Do("LPUSH", queue, jsonBytes)
 	if err != nil {
 		return err
 	}

@@ -18,19 +18,22 @@ import (
 
 //AMQPCeleryBroker is Broker client for AMQP
 type AMQPCeleryBroker struct {
-	connection     *amqp.Connection
-	exchange       *AMQPExchange
-	prefetchCount  int
-	listener       chan interface{}
-	listenerQueues []string
-	connect        func() (bool, error)
+	connection       *amqp.Connection
+	exchange         *AMQPExchange
+	defaultSendQueue *AMQPQueue
+	prefetchCount    int
+	listener         chan interface{}
+	listenerQueues   []string
+	connect          func() (bool, error)
 }
 
 type AMQPBrokerConfig struct {
 	//URL url of amqp broker
 	URL string
 	//Exchange optional non-default exchange name
-	Exchange         string
+	Exchange string
+	//DefaultSendQueue optional - all send calls will by default be routed to this queue
+	DefaultSendQueue string
 	ConnectionConfig *amqp.Config
 }
 
@@ -40,9 +43,10 @@ func NewAMQPCeleryBroker(config *AMQPBrokerConfig) (*AMQPCeleryBroker, error) {
 		return nil, err
 	}
 	broker := &AMQPCeleryBroker{
-		exchange:      NewAMQPExchange(config.Exchange),
-		listener:      make(chan interface{}),
-		prefetchCount: 4,
+		exchange:         NewAMQPExchange(config.Exchange),
+		defaultSendQueue: NewAMQPQueue(config.DefaultSendQueue),
+		listener:         make(chan interface{}),
+		prefetchCount:    4,
 	}
 	connMutex := new(sync.Mutex)
 	broker.connect = func() (bool, error) {
@@ -83,7 +87,11 @@ func (b *AMQPCeleryBroker) SendCeleryMessage(message *CeleryMessage) error {
 			logrus.Warnf("error closing channel")
 		}
 	}()
-	if err = createQueue(b.exchange, NewAMQPQueue(taskMessage.Queue), channel); err != nil {
+	queue := b.defaultSendQueue
+	if taskMessage.Queue != "" {
+		queue = NewAMQPQueue(taskMessage.Queue)
+	}
+	if err = createQueue(b.exchange, queue, channel); err != nil {
 		return err
 	}
 	resBytes, err := json.Marshal(taskMessage)
@@ -98,7 +106,7 @@ func (b *AMQPCeleryBroker) SendCeleryMessage(message *CeleryMessage) error {
 	}
 	return channel.Publish(
 		b.exchange.Name,
-		taskMessage.Queue,
+		queue.Name,
 		false,
 		false,
 		publishMessage,
@@ -231,7 +239,10 @@ func validateConfig(config *AMQPBrokerConfig) error {
 		return fmt.Errorf("empty amqp URL provided")
 	}
 	if config.Exchange == "" {
-		config.Exchange = defaultExchange
+		config.Exchange = DefaultBrokerExchange
+	}
+	if config.DefaultSendQueue == "" {
+		config.DefaultSendQueue = DefaultBrokerQueue
 	}
 	if config.ConnectionConfig == nil {
 		config.ConnectionConfig = &amqp.Config{}

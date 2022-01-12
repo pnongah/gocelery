@@ -2,5 +2,5 @@ package gocelery
 
 // list of default config values
 
-const defaultQueue = "celery"
-const defaultExchange = "default"
+const DefaultBrokerQueue = "celery"
+const DefaultBrokerExchange = "default"

@@ -63,7 +63,7 @@ func (b *AMQPCeleryBackend) GetResult(taskID string) (*ResultMessage, error) {
 	}
 
 	err = b.ExchangeDeclare(
-		defaultExchange,
+		DefaultBrokerExchange,
 		"direct",
 		true,
 		true,
