@@ -101,8 +101,11 @@ func getCeleryBroker(url string) (gocelery.CeleryBroker, error) {
 		}
 		return &gocelery.RedisCeleryBroker{Pool: redisPool}, nil
 	} else if strings.HasPrefix(url, "amqp://") {
-		return gocelery.NewAMQPCeleryBroker(url, &amqp.Config{
-			Heartbeat: 60 * time.Second,
+		return gocelery.NewAMQPCeleryBroker(&gocelery.AMQPBrokerConfig{
+			URL: url,
+			ConnectionConfig: &amqp.Config{
+				Heartbeat: 60 * time.Second,
+			},
 		})
 	} else {
 		return nil, fmt.Errorf("bad url scheme")

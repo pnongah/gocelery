@@ -46,6 +46,9 @@ func NewCeleryClient(broker CeleryBroker, backend CeleryBackend, numWorkers int)
 
 // Register task
 func (cc *CeleryClient) Register(name string, config *CeleryTaskConfig) {
+	if config.Queue == "" {
+		config.Queue = defaultQueue
+	}
 	cc.worker.Register(name, config)
 }
 
@@ -73,6 +76,9 @@ func (cc *CeleryClient) WaitForStopWorker() {
 func (cc *CeleryClient) Delay(task string, params *TaskParameters) (*AsyncResult, error) {
 	if params == nil {
 		params = &TaskParameters{}
+	}
+	if params.Queue == "" {
+		params.Queue = defaultQueue
 	}
 	celeryTask := getTaskMessage(task, params)
 	return cc.delay(celeryTask)

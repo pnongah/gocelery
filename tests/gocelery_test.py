@@ -8,7 +8,7 @@ from celery.result import AsyncResult
 
 from util.debugger import start_debugger
 
-celery_client = None
+celery_client: Celery
 
 
 class CeleryTest(unittest.TestCase):
@@ -19,15 +19,14 @@ class CeleryTest(unittest.TestCase):
 
     def test_pyworker_subtract(self):
         print('calling subtract from python')
-        result: AsyncResult = self.celery_client.send_task('tasks.subtract', args=(3, 2), exchange='celery',
-                                                           queue='py_queue')
+        result: AsyncResult = self.celery_client.send_task('tasks.subtract', args=(3, 2), queue='py_queue')
         print('received async result for subtract with ID {}'.format(result.id))
         val = result.get(timeout=5)
         self.assertEqual(1, val)
 
     def test_goworker_add(self):
         print('calling add from python')
-        result: AsyncResult = self.celery_client.send_task('add', args=(1, 2), exchange='celery', queue='go_queue')
+        result: AsyncResult = self.celery_client.send_task('add', args=(1, 2), queue='go_queue')
         print('received async result for add with ID {}'.format(result.id))
         val = result.get(timeout=5)  # flaky... backend result is available but the celery code keeps timing out (sometimes works though)
         # val = result.maybe_throw()

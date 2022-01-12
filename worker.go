@@ -7,11 +7,12 @@ package gocelery
 import (
 	"context"
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"log"
 	"reflect"
 	"sync"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 // CeleryWorker represents distributed task worker
@@ -110,9 +111,6 @@ func (w *CeleryWorker) GetNumWorkers() int {
 // Register registers tasks (functions)
 func (w *CeleryWorker) Register(name string, taskConfig *CeleryTaskConfig) {
 	w.taskLock.Lock()
-	if taskConfig.Queue == "" {
-		taskConfig.Queue = "celery"
-	}
 	w.registeredTasks[name] = taskConfig
 	w.taskLock.Unlock()
 }
