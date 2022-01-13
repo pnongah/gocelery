@@ -15,40 +15,44 @@ import (
 // RedisCeleryBroker is celery broker for redis
 type RedisCeleryBroker struct {
 	*redis.Pool
-	QueueName string
+	defaultSendQueue string
+	listenerQueues   []string
+}
+
+type RedisBrokerConfig struct {
+	DefaultSendQueue string
 }
 
 // NewRedisBroker creates new RedisCeleryBroker with given redis connection pool
-func NewRedisBroker(conn *redis.Pool, queueName string) *RedisCeleryBroker {
+func NewRedisBroker(conn *redis.Pool, config *RedisBrokerConfig) *RedisCeleryBroker {
+	if config.DefaultSendQueue == "" {
+		config.DefaultSendQueue = DefaultBrokerQueue
+	}
 	return &RedisCeleryBroker{
-		Pool:      conn,
-		QueueName: queueName,
+		defaultSendQueue: DefaultBrokerQueue,
+		Pool:             conn,
 	}
 }
 
-// NewRedisCeleryBroker creates new RedisCeleryBroker based on given uri
-//
-// Deprecated: NewRedisCeleryBroker exists for historical compatibility
-// and should not be used. Use NewRedisBroker instead to create new RedisCeleryBroker.
-func NewRedisCeleryBroker(uri string) *RedisCeleryBroker {
-	return &RedisCeleryBroker{
-		Pool:      NewRedisPool(uri),
-		QueueName: "celery",
-	}
+func (cb *RedisCeleryBroker) Listen(queues ...string) error {
+	cb.listenerQueues = append(cb.listenerQueues, queues...)
+	return nil
 }
 
 // SendCeleryMessage sends CeleryMessage to redis queue
-func (cb *RedisCeleryBroker) SendCeleryMessage(message *CeleryMessage, queueName ...string) error {
-	if len(queueName) >= 1{
-		cb.QueueName = queueName[0]
-	}
+func (cb *RedisCeleryBroker) SendCeleryMessage(message *CeleryMessage) error {
 	jsonBytes, err := json.Marshal(message)
 	if err != nil {
 		return err
 	}
 	conn := cb.Get()
 	defer conn.Close()
-	_, err = conn.Do("LPUSH", cb.QueueName, jsonBytes)
+	taskMessage := message.GetTaskMessage()
+	queue := cb.defaultSendQueue
+	if taskMessage.Queue != "" {
+		queue = taskMessage.Queue
+	}
+	_, err = conn.Do("LPUSH", queue, jsonBytes)
 	if err != nil {
 		return err
 	}
@@ -59,22 +63,31 @@ func (cb *RedisCeleryBroker) SendCeleryMessage(message *CeleryMessage, queueName
 func (cb *RedisCeleryBroker) GetCeleryMessage() (*CeleryMessage, error) {
 	conn := cb.Get()
 	defer conn.Close()
-	messageJSON, err := conn.Do("BRPOP", cb.QueueName, "1")
-	if err != nil {
-		return nil, err
-	}
-	if messageJSON == nil {
-		return nil, fmt.Errorf("null message received from redis")
-	}
-	messageList := messageJSON.([]interface{})
-	if string(messageList[0].([]byte)) != cb.QueueName {
-		return nil, fmt.Errorf("not a celery message: %v", messageList[0])
-	}
 	var message CeleryMessage
-	if err := json.Unmarshal(messageList[1].([]byte), &message); err != nil {
-		return nil, err
+	var errorMessages string
+	for _, queue := range cb.listenerQueues {
+		messageJSON, err := conn.Do("BRPOP", queue, "1")
+		if err != nil {
+			errorMessages += fmt.Sprintf("error dequeing queue %s: %v;", queue, err)
+			// continue looping - perhaps other queues are ok
+		} else if messageJSON == nil {
+			// nothing in this queue - skip
+			continue
+		} else {
+			messageList := messageJSON.([]interface{})
+			if string(messageList[0].([]byte)) != queue {
+				return nil, fmt.Errorf("not a celery message: %v", messageList[0])
+			}
+			if err = json.Unmarshal(messageList[1].([]byte), &message); err != nil {
+				return nil, err
+			}
+			return &message, nil
+		}
 	}
-	return &message, nil
+	if errorMessages != "" {
+		return nil, fmt.Errorf("error(s) encountered dequeuing the redis broker: %s", errorMessages)
+	}
+	return nil, fmt.Errorf("all queues are empty")
 }
 
 // GetTaskMessage retrieves task message from redis queue

@@ -20,8 +20,9 @@ type CeleryClient struct {
 
 // CeleryBroker is interface for celery broker database
 type CeleryBroker interface {
-	SendCeleryMessage(*CeleryMessage, ...string) error
+	SendCeleryMessage(*CeleryMessage) error
 	GetTaskMessage() (*TaskMessage, error) // must be non-blocking
+	Listen(queues ...string) error
 }
 
 // CeleryBackend is interface for celery backend database
@@ -44,8 +45,11 @@ func NewCeleryClient(broker CeleryBroker, backend CeleryBackend, numWorkers int)
 }
 
 // Register task
-func (cc *CeleryClient) Register(name string, task interface{}) {
-	cc.worker.Register(name, task)
+func (cc *CeleryClient) Register(name string, config *CeleryTaskConfig) {
+	if config.Queue == "" {
+		config.Queue = DefaultBrokerQueue
+	}
+	cc.worker.Register(name, config)
 }
 
 // StartWorkerWithContext starts celery workers with given parent context
@@ -69,16 +73,11 @@ func (cc *CeleryClient) WaitForStopWorker() {
 }
 
 // Delay gets asynchronous result
-func (cc *CeleryClient) Delay(task string, args ...interface{}) (*AsyncResult, error) {
-	celeryTask := getTaskMessage(task)
-	celeryTask.Args = args
-	return cc.delay(celeryTask)
-}
-
-// DelayKwargs gets asynchronous results with argument map
-func (cc *CeleryClient) DelayKwargs(task string, args map[string]interface{}) (*AsyncResult, error) {
-	celeryTask := getTaskMessage(task)
-	celeryTask.Kwargs = args
+func (cc *CeleryClient) Delay(task string, params *TaskParameters) (*AsyncResult, error) {
+	if params == nil {
+		params = &TaskParameters{}
+	}
+	celeryTask := getTaskMessage(task, params)
 	return cc.delay(celeryTask)
 }
 

@@ -1,10 +1,9 @@
 package main
 
 import (
+	"github.com/sirupsen/logrus"
 	"tests/config"
 	"tests/worker"
-
-	"github.com/sirupsen/logrus"
 )
 
 // intended to spin up a worker that runs in a separate process (if desired for testing).

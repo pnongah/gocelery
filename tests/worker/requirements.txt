@@ -1,3 +1,6 @@
-celery
+celery~=5.2.3
+amqp~=5.0.9
 redis
-amqp
+kombu~=5.2.3
+click~=8.0.3
+setuptools~=59.6.0

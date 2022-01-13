@@ -10,6 +10,40 @@ import (
 	"github.com/streadway/amqp"
 )
 
+// AMQPQueue stores AMQP Queue configuration
+type AMQPQueue struct {
+	Name       string
+	Durable    bool
+	AutoDelete bool
+}
+
+// AMQPExchange stores AMQP Exchange configuration
+type AMQPExchange struct {
+	Name       string
+	Type       string
+	Durable    bool
+	AutoDelete bool
+}
+
+// NewAMQPExchange creates new AMQPExchange
+func NewAMQPExchange(name string) *AMQPExchange {
+	return &AMQPExchange{
+		Name:       name,
+		Type:       "direct",
+		Durable:    true,
+		AutoDelete: false,
+	}
+}
+
+// NewAMQPQueue creates new AMQPQueue
+func NewAMQPQueue(name string) *AMQPQueue {
+	return &AMQPQueue{
+		Name:       name,
+		Durable:    true,
+		AutoDelete: false,
+	}
+}
+
 // deliveryAck acknowledges delivery message with retries on error
 func deliveryAck(delivery amqp.Delivery) {
 	var err error

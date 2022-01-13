@@ -12,6 +12,7 @@ const PyFunc_Error = "tasks.throw_error"
 // ====================== Standalone Functions ================================
 
 func Add(x int, y int) int {
+	fmt.Println("adding...")
 	return x + y
 }
 

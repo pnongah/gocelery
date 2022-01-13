@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"sync"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 // CeleryWorker represents distributed task worker
@@ -18,11 +20,16 @@ type CeleryWorker struct {
 	broker          CeleryBroker
 	backend         CeleryBackend
 	numWorkers      int
-	registeredTasks map[string]interface{}
+	registeredTasks map[string]*CeleryTaskConfig
 	taskLock        sync.RWMutex
 	cancel          context.CancelFunc
 	workWG          sync.WaitGroup
 	rateLimitPeriod time.Duration
+}
+
+type CeleryTaskConfig struct {
+	Task  interface{}
+	Queue string
 }
 
 // NewCeleryWorker returns new celery worker
@@ -31,14 +38,14 @@ func NewCeleryWorker(broker CeleryBroker, backend CeleryBackend, numWorkers int)
 		broker:          broker,
 		backend:         backend,
 		numWorkers:      numWorkers,
-		registeredTasks: map[string]interface{}{},
+		registeredTasks: map[string]*CeleryTaskConfig{},
 		rateLimitPeriod: 100 * time.Millisecond,
 	}
 }
 
 // StartWorkerWithContext starts celery worker(s) with given parent context
 func (w *CeleryWorker) StartWorkerWithContext(ctx context.Context) {
-	if err := w.setupBroker(); err != nil {
+	if err := w.broker.Listen(w.getRegisteredQueues()...); err != nil {
 		panic(err)
 	}
 	var wctx context.Context
@@ -58,8 +65,8 @@ func (w *CeleryWorker) StartWorkerWithContext(ctx context.Context) {
 					if err != nil || taskMessage == nil {
 						continue
 					}
-
 					// run task
+					logrus.Debugf("Running task with ID %s", taskMessage.ID)
 					resultMsg, err := w.RunTask(taskMessage)
 					if err != nil {
 						log.Printf("failed to run task message %s: %+v", taskMessage.ID, err)
@@ -67,7 +74,7 @@ func (w *CeleryWorker) StartWorkerWithContext(ctx context.Context) {
 						resultMsg.Status = "FAILURE"
 					}
 					defer releaseResultMessage(resultMsg)
-
+					logrus.Debugf("Storing result for task ID %s into backend", taskMessage.ID)
 					// push result to backend
 					err = w.backend.SetResult(taskMessage.ID, resultMsg)
 					if err != nil {
@@ -102,14 +109,14 @@ func (w *CeleryWorker) GetNumWorkers() int {
 }
 
 // Register registers tasks (functions)
-func (w *CeleryWorker) Register(name string, task interface{}) {
+func (w *CeleryWorker) Register(name string, taskConfig *CeleryTaskConfig) {
 	w.taskLock.Lock()
-	w.registeredTasks[name] = task
+	w.registeredTasks[name] = taskConfig
 	w.taskLock.Unlock()
 }
 
 // GetTask retrieves registered task
-func (w *CeleryWorker) GetTask(name string) interface{} {
+func (w *CeleryWorker) GetTask(name string) *CeleryTaskConfig {
 	w.taskLock.RLock()
 	task, ok := w.registeredTasks[name]
 	if !ok {
@@ -134,13 +141,13 @@ func (w *CeleryWorker) RunTask(message *TaskMessage) (*ResultMessage, error) {
 	}
 
 	// get task
-	task := w.GetTask(message.Task)
-	if task == nil {
+	config := w.GetTask(message.Task)
+	if config == nil {
 		return nil, fmt.Errorf("task %s is not registered", message.Task)
 	}
 
 	// convert to task interface
-	taskInterface, ok := task.(CeleryTask)
+	taskInterface, ok := config.Task.(CeleryTask)
 	if ok {
 		input, err := taskInterface.ParseKwargs(message.Kwargs)
 		if err != nil {
@@ -154,17 +161,8 @@ func (w *CeleryWorker) RunTask(message *TaskMessage) (*ResultMessage, error) {
 	}
 
 	// use reflection to execute function ptr
-	taskFunc := reflect.ValueOf(task)
+	taskFunc := reflect.ValueOf(config.Task)
 	return runTaskFunc(&taskFunc, message)
-}
-
-func (w *CeleryWorker) setupBroker() error {
-	if amqp, ok := w.broker.(*AMQPCeleryBroker); ok {
-		if err := amqp.Listen(); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func runTaskFunc(taskFunc *reflect.Value, message *TaskMessage) (*ResultMessage, error) {
@@ -209,4 +207,16 @@ func runTaskFunc(taskFunc *reflect.Value, message *TaskMessage) (*ResultMessage,
 		}
 	}
 	return getReflectionResultMessage(&res[0]), nil
+}
+
+func (w *CeleryWorker) getRegisteredQueues() []string {
+	queuesMap := map[string]interface{}{}
+	for _, v := range w.registeredTasks {
+		queuesMap[v.Queue] = nil
+	}
+	var queues []string
+	for k := range queuesMap {
+		queues = append(queues, k)
+	}
+	return queues
 }
