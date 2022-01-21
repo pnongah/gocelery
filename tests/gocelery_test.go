@@ -19,7 +19,7 @@ func init() {
 	logrus.SetLevel(logrus.DebugLevel)
 }
 
-func TestAtlasWatcher_FullRedis(t *testing.T) {
+func TestFullRedis(t *testing.T) {
 	env := docker.StartEnvironment(config.Env,
 		&docker.ServiceEntry{
 			Name:    "redis",
@@ -46,7 +46,7 @@ func TestAtlasWatcher_FullRedis(t *testing.T) {
 	})
 }
 
-func TestAtlasWorker_RabbitBrokerRedisBackend(t *testing.T) {
+func TestRabbitBrokerRedisBackend(t *testing.T) {
 	env := docker.StartEnvironment(config.Env,
 		&docker.ServiceEntry{
 			Name:    "redis",

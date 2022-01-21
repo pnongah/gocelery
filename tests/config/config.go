@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -23,17 +22,13 @@ var Env = &docker.EnvironmentConfig{
 }
 
 func GetRabbitMQConnectionConfig(c *docker.Container) (interface{}, error) {
-	host, ports, err := docker.GetAllEndpoints(c)
+	endpoints, err := c.GetEndpoints()
 	if err != nil {
 		return "", err
 	}
-	publicPorts := ports["5672"]
-	if len(publicPorts) == 0 {
-		return nil, errors.New("rabbitmq port not found")
-	}
 	var connString string
-	for _, publicPort := range publicPorts {
-		connString = fmt.Sprintf("amqp://admin:root@%s:%s", host, publicPort)
+	for _, publicPort := range endpoints.GetPublicPorts(5672) {
+		connString = fmt.Sprintf("amqp://admin:root@%s:%d", endpoints.GetHost(), publicPort)
 		conn, err := amqp.Dial(connString)
 		if err == nil {
 			_ = conn.Close()
@@ -49,17 +44,13 @@ func GetRabbitMQConnectionConfig(c *docker.Container) (interface{}, error) {
 }
 
 func GetRedisConnectionConfig(c *docker.Container) (interface{}, error) {
-	host, ports, err := docker.GetAllEndpoints(c)
+	endpoints, err := c.GetEndpoints()
 	if err != nil {
 		return "", err
 	}
-	publicPorts := ports["6379"]
-	if len(publicPorts) == 0 {
-		return nil, errors.New("redis port not found")
-	}
 	var connString string
-	for _, publicPort := range publicPorts {
-		connString = fmt.Sprintf("redis://%s:%s", host, publicPort)
+	for _, publicPort := range endpoints.GetPublicPorts(6379) {
+		connString = fmt.Sprintf("redis://%s:%d", endpoints.GetHost(), publicPort)
 		conn, err := redis.DialURL(connString)
 		if err == nil {
 			_ = conn.Close()
