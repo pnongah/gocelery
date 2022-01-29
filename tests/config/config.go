@@ -2,10 +2,9 @@ package config
 
 import (
 	"fmt"
+	"github.com/pnongah/gocelery"
 	"strings"
 	"time"
-
-	"github.com/pnongah/gocelery"
 
 	"github.com/gomodule/redigo/redis"
 	"github.com/keon94/go-compose/docker"
@@ -40,7 +39,7 @@ func GetRabbitMQConnectionConfig(c *docker.Container) (interface{}, error) {
 	if connString == "" {
 		return nil, fmt.Errorf("no valid rabbitmq connection could be establised")
 	}
-	return connString, nil
+	return []string{connString, "amqp://admin:root@rabbitmq:5672"}, nil
 }
 
 func GetRedisConnectionConfig(c *docker.Container) (interface{}, error) {
@@ -62,7 +61,7 @@ func GetRedisConnectionConfig(c *docker.Container) (interface{}, error) {
 	if connString == "" {
 		return nil, fmt.Errorf("no valid redis connection could be establised")
 	}
-	return connString, nil
+	return []string{connString, "redis://redis:6379"}, nil
 }
 
 func GetCeleryClient(brokerUrl string, backendUrl string) (*gocelery.CeleryClient, error) {

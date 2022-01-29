@@ -2,7 +2,7 @@ package tests
 
 import (
 	"fmt"
-	"github.com/sirupsen/logrus"
+	"runtime"
 	"testing"
 	"tests/config"
 	"tests/util"
@@ -10,13 +10,20 @@ import (
 	"time"
 
 	"github.com/pnongah/gocelery"
+	"github.com/sirupsen/logrus"
 
 	"github.com/keon94/go-compose/docker"
 	"github.com/stretchr/testify/require"
 )
 
+var dockerHostName string
+
 func init() {
 	logrus.SetLevel(logrus.DebugLevel)
+	dockerHostName = "host.docker.internal"
+	if runtime.GOOS == "windows" {
+		dockerHostName = "docker.for.win.localhost"
+	}
 }
 
 func TestFullRedis(t *testing.T) {
@@ -27,14 +34,17 @@ func TestFullRedis(t *testing.T) {
 		},
 	)
 	t.Cleanup(env.Shutdown)
-	redisConn := env.Services["redis"].(string)
+	redisConns := env.Services["redis"].([]string)
 	cfg := &config.WorkerConfig{
-		UsePyWorker: true,
-		UseGoWorker: true,
-		BrokerURL:   redisConn + "/0",
-		BackendURL:  redisConn + "/0",
+		UsePyWorker:       true,
+		UseGoWorker:       true,
+		UseDocker:         true,
+		BrokerURL:         redisConns[0] + "/0",
+		BackendURL:        redisConns[0] + "/1",
+		PrivateBrokerURL:  redisConns[1] + "/0",
+		PrivateBackendURL: redisConns[1] + "/1",
 	}
-	cli := startWorkers(t, cfg)
+	cli := startWorkers(t, env, cfg)
 	t.Run("go-client happy path", func(t *testing.T) {
 		runGoClientHappyPath(t, cli)
 	})
@@ -58,16 +68,19 @@ func TestRabbitBrokerRedisBackend(t *testing.T) {
 		},
 	)
 	t.Cleanup(env.Shutdown)
-	redisConn := env.Services["redis"].(string)
-	rabbitConn := env.Services["rabbitmq"].(string)
+	redisConns := env.Services["redis"].([]string)
+	rabbitConns := env.Services["rabbitmq"].([]string)
 
 	cfg := &config.WorkerConfig{
-		UseGoWorker: true,
-		UsePyWorker: true,
-		BrokerURL:   rabbitConn + "//worker",
-		BackendURL:  redisConn + "/0",
+		UseGoWorker:       true,
+		UsePyWorker:       true,
+		UseDocker:         true,
+		BrokerURL:         rabbitConns[0] + "//worker",
+		BackendURL:        redisConns[0] + "/0",
+		PrivateBrokerURL:  rabbitConns[1] + "//worker",
+		PrivateBackendURL: redisConns[1] + "/0",
 	}
-	cli := startWorkers(t, cfg)
+	cli := startWorkers(t, env, cfg)
 	t.Run("go-client happy path", func(t *testing.T) {
 		runGoClientHappyPath(t, cli)
 	})
@@ -143,15 +156,40 @@ func runGoClientWorkerError(t *testing.T, cli *gocelery.CeleryClient) {
 	}
 }
 
-func startWorkers(t *testing.T, cfg *config.WorkerConfig) (cli *gocelery.CeleryClient) {
-	var err error
-	cli, err = config.GetCeleryClient(cfg.BrokerURL, cfg.BackendURL)
+func startWorkers(t *testing.T, env *docker.Environment, cfg *config.WorkerConfig) (cli *gocelery.CeleryClient) {
+	cli, err := config.GetCeleryClient(cfg.BrokerURL, cfg.BackendURL)
 	require.NoError(t, err)
 	if cfg.UseGoWorker {
-		require.NoError(t, worker.RunGoWorker(t, cfg.BrokerURL, cfg.BackendURL))
+		if cfg.UseDocker {
+			err = env.StartServices(
+				&docker.ServiceEntry{
+					Name: "go-worker",
+					EnvironmentVars: map[string]string{
+						"CELERY_BROKER":  cfg.PrivateBrokerURL,
+						"CELERY_BACKEND": cfg.PrivateBackendURL,
+						"HOSTNAME":       dockerHostName,
+					},
+				})
+		} else {
+			err = worker.RunGoWorker(t, cfg.BrokerURL, cfg.BackendURL)
+		}
 	}
+	require.NoError(t, err)
 	if cfg.UsePyWorker {
-		require.NoError(t, worker.RunPythonWorker(t, cfg.BrokerURL, cfg.BackendURL))
+		if cfg.UseDocker {
+			err = env.StartServices(
+				&docker.ServiceEntry{
+					Name: "py-worker",
+					EnvironmentVars: map[string]string{
+						"CELERY_BROKER":  cfg.PrivateBrokerURL,
+						"CELERY_BACKEND": cfg.PrivateBackendURL,
+						"HOSTNAME":       dockerHostName,
+					},
+				})
+		} else {
+			err = worker.RunPythonWorker(t, cfg.BrokerURL, cfg.BackendURL)
+		}
 	}
+	require.NoError(t, err)
 	return cli
 }

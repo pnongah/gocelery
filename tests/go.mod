@@ -6,7 +6,7 @@ replace github.com/pnongah/gocelery => ../
 
 require (
 	github.com/gomodule/redigo v1.8.8
-	github.com/keon94/go-compose v0.0.0-20220120222250-cf5fabdd318b
+	github.com/keon94/go-compose v0.0.0-20220129041647-a86d848b8665
 	github.com/pnongah/gocelery v0.0.0-20220113172023-d2b42afd7202
 	github.com/sirupsen/logrus v1.8.1
 	github.com/streadway/amqp v1.0.0
