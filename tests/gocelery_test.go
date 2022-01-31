@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const useDocker = true
+
 var dockerHostName string
 
 func init() {
@@ -38,7 +40,7 @@ func TestFullRedis(t *testing.T) {
 	cfg := &config.WorkerConfig{
 		UsePyWorker:       true,
 		UseGoWorker:       true,
-		UseDocker:         true,
+		UseDocker:         useDocker,
 		BrokerURL:         redisConns[0] + "/0",
 		BackendURL:        redisConns[0] + "/1",
 		PrivateBrokerURL:  redisConns[1] + "/0",
@@ -74,7 +76,7 @@ func TestRabbitBrokerRedisBackend(t *testing.T) {
 	cfg := &config.WorkerConfig{
 		UseGoWorker:       true,
 		UsePyWorker:       true,
-		UseDocker:         true,
+		UseDocker:         useDocker,
 		BrokerURL:         rabbitConns[0] + "//worker",
 		BackendURL:        redisConns[0] + "/0",
 		PrivateBrokerURL:  rabbitConns[1] + "//worker",
