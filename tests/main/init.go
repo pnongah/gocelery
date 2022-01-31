@@ -2,17 +2,16 @@ package main
 
 import (
 	"github.com/sirupsen/logrus"
+	"os"
 	"tests/config"
 	"tests/worker"
 )
 
-// intended to spin up a worker that runs in a separate process (if desired for testing).
-
-// tweak these as needed
-const brokerUrl = "amqp://admin:root@localhost:5672//go-worker"
-const backendUrl = "redis://localhost:6379/0"
+// intended to spin up a worker that is standalone (Dockerfile-based)
 
 func main() {
+	brokerUrl := os.Args[1]
+	backendUrl := os.Args[2]
 	cli, err := config.GetCeleryClient(
 		brokerUrl,
 		backendUrl,

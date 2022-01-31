@@ -1,6 +1,40 @@
 version: "2.4"
 
 services:
+
+  workers:
+    image: celery_test
+    build:
+      context: ../
+      dockerfile: tests/Dockerfile
+
+  go-worker:
+    image: celery_test
+    entrypoint: /go/bin/dlv --listen=:9999 --headless=true --api-version=2 --accept-multiclient exec --continue /build/tests/worker/init.bin $CELERY_BROKER $CELERY_BACKEND
+    labels:
+      - "integration"
+    networks:
+      - "tests"
+    ports:
+      - "9997:9999" #debug port
+    depends_on:
+      - workers
+
+  py-worker:
+    image: celery_test
+    entrypoint: python /build/tests/worker/init.py $CELERY_BROKER $CELERY_BACKEND
+    labels:
+      - "integration"
+    networks:
+      - "tests"
+    environment:
+      - PYTHON_DEBUG_HOST=${HOSTNAME}
+      - PYTHON_DEBUG_PORT=9998
+    extra_hosts:
+      - "${HOSTNAME}:host-gateway"
+    depends_on:
+      - workers
+
   redis:
     image: redis
     labels:
@@ -11,6 +45,11 @@ services:
       - redis-volume-test:/data
     ports:
       - "${REDIS_PORT:-0}:6379"
+    healthcheck:
+      test: redis-cli PING
+      interval: 5s
+      timeout: 30s
+      retries: 5
   rabbitmq:
     image: rabbitmq:management
     labels:
@@ -25,9 +64,9 @@ services:
       - ./config/rabbit/definition.json:/etc/rabbitmq/definition.json:ro
     healthcheck:
       test: rabbitmq-diagnostics -q ping
-      interval: 30s
+      interval: 10s
       timeout: 30s
-      retries: 3
+      retries: 5
     ports:
       - "${RABBITMQ_PORT:-0}:5672"
       - "${RABBITMQ_MGMT_PORT:-0}:15672"

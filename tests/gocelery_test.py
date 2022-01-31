@@ -2,11 +2,8 @@ import sys
 import time
 import unittest
 from unittest import TestSuite
-
 from celery import Celery
 from celery.result import AsyncResult
-
-from util.debugger import start_debugger
 
 celery_client: Celery
 
@@ -35,6 +32,7 @@ class CeleryTest(unittest.TestCase):
 
 def main():
     print('starting python tests with args {}'.format(sys.argv))
+    from util.debugger import start_debugger
     start_debugger(9999)
     broker_url = sys.argv[1]
     backend_url = sys.argv[2]
