@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"encoding/json"
 	"fmt"
 	"runtime"
 	"testing"
@@ -16,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const useDocker = true
+const useDocker = false
 
 var dockerHostName string
 
@@ -52,6 +53,9 @@ func TestFullRedis(t *testing.T) {
 	})
 	t.Run("go-client worker error", func(t *testing.T) {
 		runGoClientWorkerError(t, cli)
+	})
+	t.Run("go-client streaming", func(t *testing.T) {
+		runGoClientStreamer(t, cli)
 	})
 	t.Run("py-client tests", func(t *testing.T) {
 		runPythonTests(t, cfg)
@@ -89,6 +93,9 @@ func TestRabbitBrokerRedisBackend(t *testing.T) {
 	t.Run("go-client worker error", func(t *testing.T) {
 		runGoClientWorkerError(t, cli)
 	})
+	t.Run("go-client streaming", func(t *testing.T) {
+		runGoClientStreamer(t, cli)
+	})
 	t.Run("py-client tests", func(t *testing.T) {
 		runPythonTests(t, cfg)
 	})
@@ -110,7 +117,7 @@ func runGoClientHappyPath(t *testing.T, cli *gocelery.CeleryClient) {
 			Queue: worker.GoQueue,
 		})
 		require.NoError(t, err)
-		result, err := cli.GetAsyncResult(delay.TaskID).Get(5 * time.Second)
+		result, err := cli.GetAsyncResult(delay.TaskID).Get(5*time.Second, nil)
 		require.NoError(t, err)
 		require.Equal(t, 3.0, result)
 		delay, err = cli.Delay(worker.GoFuncKwargs_Add, &gocelery.TaskParameters{
@@ -118,7 +125,7 @@ func runGoClientHappyPath(t *testing.T, cli *gocelery.CeleryClient) {
 			Queue:  worker.GoQueue,
 		})
 		require.NoError(t, err)
-		result, err = cli.GetAsyncResult(delay.TaskID).Get(5 * time.Second)
+		result, err = cli.GetAsyncResult(delay.TaskID).Get(5*time.Second, nil)
 		require.NoError(t, err)
 		require.Equal(t, 3.0, result)
 	}
@@ -128,7 +135,7 @@ func runGoClientHappyPath(t *testing.T, cli *gocelery.CeleryClient) {
 			Queue: worker.PyQueue,
 		})
 		require.NoError(t, err)
-		result, err := cli.GetAsyncResult(delay.TaskID).Get(5 * time.Second)
+		result, err := cli.GetAsyncResult(delay.TaskID).Get(5*time.Second, nil)
 		require.NoError(t, err)
 		require.Equal(t, 1.0, result)
 	}
@@ -141,20 +148,44 @@ func runGoClientWorkerError(t *testing.T, cli *gocelery.CeleryClient) {
 			Queue: worker.GoQueue,
 		})
 		require.NoError(t, err)
-		_, err = cli.GetAsyncResult(delay.TaskID).Get(5 * time.Second)
+		_, err = cli.GetAsyncResult(delay.TaskID).Get(5*time.Second, nil)
 		require.ErrorAs(t, err, &expectedError)
 		delay, err = cli.Delay(worker.GoFuncKwargs_Error, &gocelery.TaskParameters{
 			Queue: worker.GoQueue,
 		})
 		require.NoError(t, err)
-		_, err = cli.GetAsyncResult(delay.TaskID).Get(5 * time.Second)
+		_, err = cli.GetAsyncResult(delay.TaskID).Get(5*time.Second, nil)
 		require.ErrorAs(t, err, &expectedError)
 	}
 	{
 		delay, err := cli.Delay(worker.PyFunc_Error, nil)
 		require.NoError(t, err)
-		_, err = cli.GetAsyncResult(delay.TaskID).Get(5 * time.Second)
+		_, err = cli.GetAsyncResult(delay.TaskID).Get(5*time.Second, nil)
 		require.ErrorAs(t, err, &expectedError)
+	}
+}
+
+func runGoClientStreamer(t *testing.T, cli *gocelery.CeleryClient) {
+	{
+		delay, err := cli.Delay(worker.PyFunc_Progress, &gocelery.TaskParameters{})
+		require.NoError(t, err)
+		progress := 0
+		oldProgress := -1
+		result, err := delay.Get(5*time.Minute, &gocelery.GetOptions{
+			OnReceive: func(result *gocelery.ResultMessage) (bool, error) {
+				serialized, _ := json.Marshal(result)
+				current := result.Result.(map[string]interface{})["current"].(float64)
+				progress = int(current)
+				if progress != oldProgress {
+					fmt.Printf("received: %s\n", string(serialized))
+				}
+				oldProgress = progress
+				return false, nil
+			},
+		})
+		require.NoError(t, err)
+		require.Greater(t, progress, 90) // to be safe...
+		require.Equal(t, "progress complete!", result)
 	}
 }
 
