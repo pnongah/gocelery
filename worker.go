@@ -71,7 +71,7 @@ func (w *CeleryWorker) StartWorkerWithContext(ctx context.Context) {
 					if err != nil {
 						log.Printf("failed to run task message %s: %+v", taskMessage.ID, err)
 						resultMsg = getResultMessage(&TaskResultError{Err: err.Error()})
-						resultMsg.Status = "FAILURE"
+						resultMsg.Status = ResultFailure
 					}
 					defer releaseResultMessage(resultMsg)
 					logrus.Debugf("Storing result for task ID %s into backend", taskMessage.ID)

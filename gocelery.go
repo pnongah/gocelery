@@ -35,6 +35,18 @@ type TaskResultError struct {
 	Err interface{} `json:"err"`
 }
 
+type NoOpError struct {
+}
+
+type GetOptions struct {
+	// OnReceive custom handler for when a result comes from celery. Useful especially when you expect a stream of results to be returned.
+	// note 1: this handler is invoked only for results with custom statuses. if it returns an error it is equivalent to the task returning one.
+	// note 2: return true to exit the listener immediately with the current result.
+	OnReceive func(*ResultMessage) (bool, error)
+
+	noopErrIfNotReady bool
+}
+
 // NewCeleryClient creates new celery client
 func NewCeleryClient(broker CeleryBroker, backend CeleryBackend, numWorkers int) (*CeleryClient, error) {
 	return &CeleryClient{
@@ -118,23 +130,33 @@ type AsyncResult struct {
 	result  *ResultMessage
 }
 
-// Builds asynchronous result
+// GetAsyncResult Builds asynchronous result
 func (cc *CeleryClient) GetAsyncResult(taskID string) *AsyncResult {
-	return &AsyncResult{TaskID: taskID, backend: cc.backend}
+	return &AsyncResult{
+		TaskID:  taskID,
+		backend: cc.backend,
+	}
 }
 
 // Get gets actual result from backend
 // It blocks for period of time set by timeout and returns error if unavailable
-func (ar *AsyncResult) Get(timeout time.Duration) (interface{}, error) {
+func (ar *AsyncResult) Get(timeout time.Duration, opts *GetOptions) (interface{}, error) {
+	if opts == nil {
+		opts = &GetOptions{}
+	}
+	opts.noopErrIfNotReady = true
 	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
 	timeoutChan := time.After(timeout)
 	for {
 		select {
 		case <-timeoutChan:
-			err := fmt.Errorf("%v timeout getting result for %s", timeout, ar.TaskID)
-			return nil, err
+			if timeout > 0 {
+				err := fmt.Errorf("%v timeout getting result for %s", timeout, ar.TaskID)
+				return nil, err
+			}
 		case <-ticker.C:
-			val, err := ar.AsyncGet()
+			val, err := ar.AsyncGet(opts)
 			if err != nil {
 				if _, ok := err.(*TaskResultError); !ok {
 					continue
@@ -146,22 +168,45 @@ func (ar *AsyncResult) Get(timeout time.Duration) (interface{}, error) {
 }
 
 // AsyncGet gets actual result from backend and returns nil if not available
-func (ar *AsyncResult) AsyncGet() (interface{}, error) {
+func (ar *AsyncResult) AsyncGet(opts *GetOptions) (interface{}, error) {
 	if ar.result != nil {
 		return ar.result.Result, nil
 	}
-	val, err := ar.backend.GetResult(ar.TaskID)
+	if opts == nil {
+		opts = &GetOptions{}
+	}
+	result, err := ar.backend.GetResult(ar.TaskID)
 	if err != nil {
 		return nil, err
 	}
-	if val == nil {
+	if opts.noopErrIfNotReady {
+		err = &NoOpError{}
+	}
+	if result == nil {
 		return nil, err
 	}
-	if val.Status != "SUCCESS" {
-		return nil, &TaskResultError{Err: val.Result}
+	switch result.Status {
+	case ResultSuccess:
+		ar.result = result
+		return result.Result, nil
+	case ResultFailure:
+		return nil, &TaskResultError{Err: result.Traceback}
+	case ResultRevoked:
+	case ResultRetry:
+	case ResultStarted:
+	case ResultPending:
+	default:
+		if opts.OnReceive != nil {
+			done, err := opts.OnReceive(result)
+			if err != nil {
+				return nil, &TaskResultError{Err: err}
+			}
+			if done {
+				return result.Result, nil
+			}
+		}
 	}
-	ar.result = val
-	return val.Result, nil
+	return nil, err
 }
 
 // Ready checks if actual result is ready
@@ -178,6 +223,13 @@ func (ar *AsyncResult) Ready() (bool, error) {
 }
 
 func (e *TaskResultError) Error() string {
+	if _, ok := e.Err.(string); ok {
+		return e.Err.(string)
+	}
 	bytes, _ := json.Marshal(e.Err)
 	return string(bytes)
+}
+
+func (e *NoOpError) Error() string {
+	return "noop"
 }

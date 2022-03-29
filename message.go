@@ -196,11 +196,23 @@ func (tm *TaskMessage) Encode() (string, error) {
 // ResultMessage is return message received from broker
 type ResultMessage struct {
 	ID        string        `json:"task_id"`
-	Status    string        `json:"status"`
+	Status    ResultState   `json:"status"`
 	Traceback interface{}   `json:"traceback"`
 	Result    interface{}   `json:"result"`
 	Children  []interface{} `json:"children"`
 }
+
+type ResultState string
+
+// based on https://docs.celeryproject.org/en/stable/userguide/tasks.html#task-states
+const (
+	ResultPending ResultState = "PENDING"
+	ResultStarted ResultState = "STARTED"
+	ResultSuccess ResultState = "SUCCESS"
+	ResultFailure ResultState = "FAILURE"
+	ResultRetry   ResultState = "RETRY"
+	ResultRevoked ResultState = "REVOKED"
+)
 
 func (rm *ResultMessage) reset() {
 	rm.Result = nil
@@ -209,7 +221,7 @@ func (rm *ResultMessage) reset() {
 var resultMessagePool = sync.Pool{
 	New: func() interface{} {
 		return &ResultMessage{
-			Status:    "SUCCESS",
+			Status:    ResultSuccess,
 			Traceback: nil,
 			Children:  nil,
 		}

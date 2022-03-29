@@ -8,6 +8,7 @@ const GoFuncKwargs_Add = "add-kwargs"
 const GoFuncKwargs_Error = "throw_error-kwargs"
 const PyFunc_Sub = "tasks.subtract"
 const PyFunc_Error = "tasks.throw_error"
+const PyFunc_Progress = "tasks.progress"
 
 // ====================== Standalone Functions ================================
 
