@@ -147,32 +147,28 @@ func (ar *AsyncResult) Get(timeout time.Duration) (interface{}, error) {
 
 // AsyncGet gets actual result from backend and returns nil if not available
 func (ar *AsyncResult) AsyncGet() (interface{}, error) {
-	if ar.result != nil {
-		return ar.result.Result, nil
+	if ar.result == nil {
+		val, err := ar.backend.GetResult(ar.TaskID)
+		if err != nil || val == nil {
+			return val, err
+		}
+		if val.Status == "SUCCESS" || val.Status == "FAILURE" {
+			ar.result = val
+		}
 	}
-	val, err := ar.backend.GetResult(ar.TaskID)
-	if err != nil {
-		return nil, err
+	if ar.result.Status != "SUCCESS" {
+		return nil, &TaskResultError{Err: ar.result.Result}
 	}
-	if val == nil {
-		return nil, err
-	}
-	if val.Status != "SUCCESS" {
-		return nil, &TaskResultError{Err: val.Result}
-	}
-	ar.result = val
-	return val.Result, nil
+	return ar.result.Result, nil
 }
 
 // Ready checks if actual result is ready
 func (ar *AsyncResult) Ready() (bool, error) {
-	res, err := ar.AsyncGet()
-	if err != nil {
-		if _, ok := err.(*TaskResultError); !ok {
-			return false, err
-		}
+	_, err := ar.AsyncGet()
+	if ar.result != nil {
+		return true, nil
 	}
-	return res != nil, nil
+	return false, err
 }
 
 func (e *TaskResultError) Error() string {
