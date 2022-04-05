@@ -166,15 +166,13 @@ func (ar *AsyncResult) AsyncGet() (interface{}, error) {
 
 // Ready checks if actual result is ready
 func (ar *AsyncResult) Ready() (bool, error) {
-	if ar.result != nil {
-		return true, nil
-	}
-	val, err := ar.backend.GetResult(ar.TaskID)
+	res, err := ar.AsyncGet()
 	if err != nil {
-		return false, err
+		if _, ok := err.(*TaskResultError); !ok {
+			return false, err
+		}
 	}
-	ar.result = val
-	return val != nil, nil
+	return res != nil, nil
 }
 
 func (e *TaskResultError) Error() string {
